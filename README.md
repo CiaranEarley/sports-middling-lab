@@ -442,6 +442,7 @@ turns one-off scans into a dataset.
 - [Interpreting the scanner](docs/guides/interpreting-sports-scanner.md)
 - [Screenshot gallery](docs/guides/screenshot-gallery.md)
 - [project project guide PDF](docs/guides/sports_middling_lab_project_project_guide.pdf)
+- [project project guide PDF](docs/guides/sports_middling_lab_project_project_guide.pdf)
 - [project project guide PDF](docs/guides/sports_betting_market_scanner_project_guide.pdf)
 
 ## Disclaimer

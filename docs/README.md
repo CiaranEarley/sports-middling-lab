@@ -20,4 +20,6 @@ Sports Middling Lab.
 
 ## documentation
 
+- [Sports Middling Lab project project guide](study/sports_middling_lab_project_project_guide.pdf)
+- [Sports Middling Lab project project guide](study/sports_middling_lab_project_project_guide.pdf)
 - [Sports betting market scanner project guide](study/sports_betting_market_scanner_project_guide.pdf)
