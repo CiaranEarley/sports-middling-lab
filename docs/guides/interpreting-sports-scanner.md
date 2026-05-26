@@ -34,6 +34,20 @@ break-even probability implied by the payoff.
 - Check whether the modeled distribution is realistic.
 - Treat small edge as fragile after model error and execution risk.
 
+## Saving Candidates
+
+After a scan, use `Save displayed candidates to research log` to persist the
+currently visible rows into a local SQLite database. This does not make another
+API call and does not store the API key.
+
+The Research Log tab lets you:
+
+- Filter saved observations by type, signal, status, and text search.
+- Export filtered observations to CSV.
+- Add manual notes and a review status such as `Watched`, `Taken`, `Ignored`, or
+  `Settled`.
+- Keep the market snapshot so future backtesting work has a starting dataset.
+
 ## Current Research Limits
 
 The scanner should be presented as a live research and payoff-analysis tool, not
@@ -44,5 +58,5 @@ as a fully backtested trading system.
 | No historical odds database | The app does not yet store enough timestamped past prices to prove that similar middles have worked historically. Backtesting is therefore limited. |
 | API prompts and credit caps | The app deliberately avoids constant polling so a small The Odds API quota is not burned accidentally. This is good quota discipline, but it limits continuous monitoring. |
 | Limited CLV tracking | Closing-line value needs an entry price and a later closing price from the same market. Because the app only scans when prompted, CLV is a future upgrade rather than a current claim. |
-| Saved-result workflow | Persisting every scan to CSV or SQLite would create the dataset needed for later review, backtesting, and CLV measurement. |
+| Saved-result workflow | The app now has a local SQLite Research Log for user-saved scans, but useful backtesting still needs repeated observations and final outcomes. |
 | Execution simulation | The current app does not fully simulate rejected stakes, book limits, one-leg fills, stale prices, or latency. |

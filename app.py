@@ -2,7 +2,10 @@
 
 from __future__ import annotations
 
+import json
 import os
+from dataclasses import asdict
+from pathlib import Path
 
 import pandas as pd
 import plotly.graph_objects as go
@@ -20,6 +23,15 @@ from sports_middling.middling import (
     normal_probabilities,
     poisson_probabilities,
     summarize_expected_value,
+)
+from sports_middling.research_log import (
+    REVIEW_STATUSES,
+    default_database_path,
+    fetch_observations,
+    make_candidate_hash,
+    save_observations,
+    update_observation_review,
+    utc_now_iso,
 )
 from sports_middling.sports_odds_api import (
     SportsOddsApiError,
@@ -153,13 +165,15 @@ def main() -> None:
         "Scan sportsbook lines for middling opportunities, then inspect the payoff like an options corridor."
     )
 
-    scanner_tab, payoff_tab, notes_tab = st.tabs(
-        ["Opportunity Scanner", "Payoff Lab", "Model Notes"]
+    scanner_tab, payoff_tab, research_tab, notes_tab = st.tabs(
+        ["Opportunity Scanner", "Payoff Lab", "Research Log", "Model Notes"]
     )
     with scanner_tab:
         _render_opportunity_scanner()
     with payoff_tab:
         _render_payoff_lab()
+    with research_tab:
+        _render_research_log()
     with notes_tab:
         _render_model_notes(expanded=True)
 
@@ -529,6 +543,221 @@ def _render_payoff_table(frame: pd.DataFrame) -> None:
         )
 
 
+def _render_research_log() -> None:
+    st.subheader("Saved Research Log")
+    db_path = _research_database_path()
+    st.caption(
+        f"Saved locally to `{db_path}`. The database stores market observations and review notes, not API keys."
+    )
+    records = fetch_observations(db_path, limit=5000)
+    if not records:
+        st.info(
+            "No saved observations yet. Run a scan in the Opportunity Scanner, then use "
+            "Save displayed candidates to build your local history."
+        )
+        return
+
+    frame = pd.DataFrame(records)
+    filtered = _filter_research_log(frame)
+    metric_cols = st.columns(4)
+    metric_cols[0].metric("Saved rows", len(frame))
+    metric_cols[1].metric("Filtered rows", len(filtered))
+    metric_cols[2].metric("TAKE", int((frame["signal"] == "TAKE").sum()))
+    metric_cols[3].metric("Unreviewed", int((frame["review_status"] == "New").sum()))
+
+    if filtered.empty:
+        st.warning("No saved observations match the current filters.")
+        return
+
+    display_columns = [
+        "id",
+        "created_at",
+        "review_status",
+        "opportunity_type",
+        "signal",
+        "sport_label",
+        "event_label",
+        "market_key",
+        "participant",
+        "group_label",
+        "books",
+        "lines",
+        "odds",
+        "expected_value",
+        "edge",
+        "break_even_probability",
+        "model_probability",
+        "implied_probability",
+        "profit_if_hit",
+        "return_if_hit",
+        "notes",
+    ]
+    visible_columns = [column for column in display_columns if column in filtered.columns]
+    st.dataframe(
+        filtered[visible_columns].style.format(
+            {
+                "expected_value": "{:.2f}",
+                "edge": "{:.2%}",
+                "break_even_probability": "{:.2%}",
+                "model_probability": "{:.2%}",
+                "implied_probability": "{:.2%}",
+                "profit_if_hit": "{:.2f}",
+                "return_if_hit": "{:.2%}",
+            },
+            na_rep="",
+        ),
+        use_container_width=True,
+        hide_index=True,
+    )
+    st.download_button(
+        "Export filtered log",
+        data=filtered.to_csv(index=False).encode("utf-8"),
+        file_name="sports_middling_research_log.csv",
+        mime="text/csv",
+        use_container_width=True,
+    )
+    _render_research_log_detail(db_path, filtered)
+
+
+def _filter_research_log(frame: pd.DataFrame) -> pd.DataFrame:
+    filter_cols = st.columns([0.8, 0.8, 0.8, 1.2])
+    signal_options = _non_empty_options(frame, "signal")
+    type_options = _non_empty_options(frame, "opportunity_type")
+    status_options = [status for status in REVIEW_STATUSES if status in set(frame["review_status"])]
+    selected_signals = filter_cols[0].multiselect(
+        "Signal",
+        options=signal_options,
+        default=signal_options,
+        key="research_filter_signal",
+    )
+    selected_types = filter_cols[1].multiselect(
+        "Type",
+        options=type_options,
+        default=type_options,
+        key="research_filter_type",
+    )
+    selected_statuses = filter_cols[2].multiselect(
+        "Status",
+        options=status_options,
+        default=status_options,
+        key="research_filter_status",
+    )
+    search_text = filter_cols[3].text_input(
+        "Search",
+        placeholder="event, participant, book, market",
+        key="research_filter_search",
+    )
+
+    filtered = frame.copy()
+    if selected_signals:
+        filtered = filtered[filtered["signal"].isin(selected_signals)]
+    if selected_types:
+        filtered = filtered[filtered["opportunity_type"].isin(selected_types)]
+    if selected_statuses:
+        filtered = filtered[filtered["review_status"].isin(selected_statuses)]
+    if search_text:
+        search_columns = [
+            "event_label",
+            "participant",
+            "group_label",
+            "books",
+            "market_key",
+            "notes",
+        ]
+        haystack = filtered[
+            [column for column in search_columns if column in filtered.columns]
+        ].fillna("").astype(str).agg(" ".join, axis=1)
+        filtered = filtered[haystack.str.contains(search_text, case=False, regex=False)]
+    return filtered
+
+
+def _render_research_log_detail(db_path: Path, frame: pd.DataFrame) -> None:
+    selected_id = st.selectbox(
+        "Review saved observation",
+        options=frame["id"].tolist(),
+        format_func=lambda observation_id: _research_log_label(frame, int(observation_id)),
+        key="research_selected_id",
+    )
+    row = frame[frame["id"] == selected_id].iloc[0].to_dict()
+    detail_cols = st.columns(2)
+    detail_cols[0].write(f"**Event:** {row.get('event_label') or 'n/a'}")
+    detail_cols[0].write(f"**Market:** {row.get('market_key') or 'n/a'}")
+    detail_cols[0].write(f"**Books:** {row.get('books') or 'n/a'}")
+    detail_cols[1].write(f"**Type:** {row.get('opportunity_type') or 'n/a'}")
+    detail_cols[1].write(f"**Signal:** {row.get('signal') or 'n/a'}")
+    detail_cols[1].write(f"**Created:** {row.get('created_at') or 'n/a'}")
+
+    with st.expander("Saved legs / raw detail"):
+        st.json(_safe_json_loads(row.get("legs_json"), []))
+        st.json(_safe_json_loads(row.get("raw_json"), {}))
+
+    with st.form("research_review_form"):
+        current_status = row.get("review_status") or "New"
+        status = st.selectbox(
+            "Review status",
+            options=list(REVIEW_STATUSES),
+            index=list(REVIEW_STATUSES).index(current_status)
+            if current_status in REVIEW_STATUSES
+            else 0,
+        )
+        notes = st.text_area("Notes", value=str(row.get("notes") or ""))
+        final_result = st.text_input(
+            "Final result / settlement note",
+            value=str(row.get("final_result") or ""),
+        )
+        settled_at = st.text_input(
+            "Settled at",
+            value=str(row.get("settled_at") or ""),
+            placeholder="2026-05-27T22:00:00Z",
+        )
+        if st.form_submit_button("Update saved observation", use_container_width=True):
+            update_observation_review(
+                db_path,
+                int(selected_id),
+                review_status=status,
+                notes=notes,
+                final_result=final_result,
+                settled_at=settled_at,
+            )
+            st.success("Saved review update.")
+            st.rerun()
+
+
+def _non_empty_options(frame: pd.DataFrame, column: str) -> list[str]:
+    if column not in frame.columns:
+        return []
+    values = [str(value) for value in frame[column].fillna("").unique() if str(value)]
+    return sorted(values)
+
+
+def _research_log_label(frame: pd.DataFrame, observation_id: int) -> str:
+    row = frame[frame["id"] == observation_id].iloc[0]
+    participant = row.get("participant") or row.get("group_label") or "market"
+    return (
+        f"{observation_id} | {row.get('signal', '')} | "
+        f"{row.get('event_label', '')} | {participant}"
+    )
+
+
+def _safe_json_loads(value, fallback):
+    if not value:
+        return fallback
+    if isinstance(value, (dict, list)):
+        return value
+    try:
+        return json.loads(str(value))
+    except json.JSONDecodeError:
+        return fallback
+
+
+def _research_database_path() -> Path:
+    configured = os.getenv("SPORTS_MIDDLING_DB_PATH", "").strip()
+    if configured:
+        path = Path(configured).expanduser()
+        return path if path.is_absolute() else Path.cwd() / path
+    return default_database_path(Path.cwd())
+
+
 def _render_opportunity_scanner() -> None:
     api_key = _api_key_input()
     st.subheader("Live Opportunity Scanner")
@@ -712,13 +941,14 @@ def _render_opportunity_scanner() -> None:
             if load_and_scan_events:
                 _scan_live_events(
                     api_key=api_key,
-                sport_key=sport_key,
-                regions=regions,
-                market_keys=selected_market_keys,
-                market_mode=market_mode,
-                events=load_and_scan_events,
-                total_stake=float(st.session_state.get("total_stake", 100.0)),
-            )
+                    sport_key=sport_key,
+                    sport_label=sport_label,
+                    regions=regions,
+                    market_keys=selected_market_keys,
+                    market_mode=market_mode,
+                    events=load_and_scan_events,
+                    total_stake=float(st.session_state.get("total_stake", 100.0)),
+                )
     if action_cols[2].button("Scan loaded events", use_container_width=True):
         loaded_scan_events = _events_for_capped_scan(
             events=events,
@@ -730,6 +960,7 @@ def _render_opportunity_scanner() -> None:
         _scan_live_events(
             api_key=api_key,
             sport_key=sport_key,
+            sport_label=sport_label,
             regions=regions,
             market_keys=selected_market_keys,
             market_mode=market_mode,
@@ -756,6 +987,7 @@ def _render_opportunity_scanner() -> None:
             _scan_live_events(
                 api_key=api_key,
                 sport_key=sport_key,
+                sport_label=sport_label,
                 regions=regions,
                 market_keys=selected_market_keys,
                 market_mode=market_mode,
@@ -1108,7 +1340,7 @@ def _render_scan_summary() -> None:
     metric_cols[0].metric("Events Scanned", summary.get("events", 0))
     metric_cols[1].metric("Markets", summary.get("markets", 0))
     metric_cols[2].metric("Quotes", summary.get("quotes", 0))
-    metric_cols[3].metric("Middles", summary.get("candidates", 0))
+    metric_cols[3].metric("Candidates", summary.get("candidates", 0))
     metric_cols[4].metric("Errors", summary.get("errors", 0))
 
 
@@ -1186,6 +1418,12 @@ def _render_candidate_browser() -> None:
         mime="text/csv",
         use_container_width=True,
     )
+    if st.button(
+        "Save displayed candidates to research log",
+        key="save_middle_candidates",
+        use_container_width=True,
+    ):
+        _save_candidates_to_research_log("middle", filtered_candidates)
 
     selected_index = st.selectbox(
         "Browse opportunity",
@@ -1252,6 +1490,12 @@ def _render_arbitrage_browser() -> None:
         mime="text/csv",
         use_container_width=True,
     )
+    if st.button(
+        "Save displayed candidates to research log",
+        key="save_arbitrage_candidates",
+        use_container_width=True,
+    ):
+        _save_candidates_to_research_log("arbitrage", filtered)
     selected_index = st.selectbox(
         "Browse arbitrage candidate",
         options=list(range(len(filtered))),
@@ -1322,6 +1566,12 @@ def _render_outright_browser() -> None:
         mime="text/csv",
         use_container_width=True,
     )
+    if st.button(
+        "Save displayed portfolios to research log",
+        key="save_outright_candidates",
+        use_container_width=True,
+    ):
+        _save_candidates_to_research_log("outright", filtered)
     selected_index = st.selectbox(
         "Browse outright portfolio",
         options=list(range(len(filtered))),
@@ -1613,6 +1863,7 @@ def _scan_live_events(
     *,
     api_key: str,
     sport_key: str,
+    sport_label: str,
     regions: str,
     market_keys: list[str],
     market_mode: str,
@@ -1643,6 +1894,13 @@ def _scan_live_events(
     quote_count = 0
     errors = []
     markets = ",".join(market_keys)
+    scan_started_at = utc_now_iso()
+    scan_id = _scan_id(
+        scan_started_at=scan_started_at,
+        sport_key=sport_key,
+        market_mode=market_mode,
+        market_keys=market_keys,
+    )
     with st.spinner(f"Scanning {len(events)} event(s) across {len(market_keys)} market key(s)..."):
         for event in events:
             try:
@@ -1718,6 +1976,17 @@ def _scan_live_events(
         result_count = len(middle_candidates)
         result_label = "middle candidate(s)"
     st.session_state["last_result_type"] = market_mode
+    st.session_state["last_scan_context"] = {
+        "scan_id": scan_id,
+        "created_at": scan_started_at,
+        "sport_key": sport_key,
+        "sport_label": sport_label,
+        "regions": regions,
+        "market_mode": market_mode,
+        "market_keys": list(market_keys),
+        "event_count": len(events),
+        "quote_count": quote_count,
+    }
     st.session_state["last_scan_summary"] = {
         "events": len(events),
         "markets": len(market_keys),
@@ -1735,6 +2004,206 @@ def _scan_live_events(
         st.info(
             f"Scanned {len(events)} event(s) and {quote_count} quote(s), but found no line middles."
         )
+
+
+def _save_candidates_to_research_log(opportunity_type: str, candidates) -> None:
+    if not candidates:
+        st.warning("There are no displayed candidates to save.")
+        return
+    context = _last_scan_context()
+    if opportunity_type == "middle":
+        records = [_middle_observation(candidate, context) for candidate in candidates]
+    elif opportunity_type == "arbitrage":
+        records = [_arbitrage_observation(candidate, context) for candidate in candidates]
+    else:
+        records = [_outright_observation(candidate, context) for candidate in candidates]
+
+    inserted = save_observations(_research_database_path(), records)
+    duplicate_count = len(records) - inserted
+    st.success(f"Saved {inserted} new observation(s) to the research log.")
+    if duplicate_count:
+        st.caption(f"{duplicate_count} duplicate row(s) from this scan were already saved.")
+
+
+def _last_scan_context() -> dict:
+    context = st.session_state.get("last_scan_context") or {}
+    created_at = str(context.get("created_at") or utc_now_iso())
+    return {
+        "created_at": created_at,
+        "scan_id": str(context.get("scan_id") or f"manual-{created_at}"),
+        "sport_key": str(context.get("sport_key") or ""),
+        "sport_label": str(context.get("sport_label") or ""),
+        "regions": str(context.get("regions") or ""),
+        "market_mode": str(context.get("market_mode") or ""),
+        "market_keys": context.get("market_keys") or [],
+    }
+
+
+def _base_observation(context: dict, opportunity_type: str) -> dict:
+    market_keys = context.get("market_keys") or []
+    return {
+        "created_at": context["created_at"],
+        "scan_id": context["scan_id"],
+        "sport_key": context["sport_key"],
+        "sport_label": context["sport_label"],
+        "regions": context["regions"],
+        "market_mode": context["market_mode"],
+        "market_keys": ",".join(market_keys) if isinstance(market_keys, list) else str(market_keys),
+        "opportunity_type": opportunity_type,
+        "review_status": "New",
+    }
+
+
+def _middle_observation(candidate, context: dict) -> dict:
+    assessment = _candidate_assessment(candidate)
+    analysis = _candidate_analysis(candidate)
+    record = _base_observation(context, "middle")
+    record.update(
+        {
+            "signal": assessment["signal"],
+            "event_id": candidate.event_id,
+            "event_label": candidate.event_label,
+            "commence_time": candidate.commence_time,
+            "market_key": candidate.market_key,
+            "participant": candidate.participant,
+            "books": f"{candidate.over_book} / {candidate.under_book}",
+            "lines": f"O{candidate.over_line:g} / U{candidate.under_line:g}",
+            "odds": f"{candidate.over_american_odds:+.0f} / {candidate.under_american_odds:+.0f}",
+            "stakes": f"{candidate.over_stake:.2f} / {candidate.under_stake:.2f}",
+            "model_probability": assessment["model_middle_probability"],
+            "break_even_probability": assessment["break_even_probability"],
+            "edge": assessment["edge"],
+            "expected_value": assessment["expected_profit"],
+            "max_loss": analysis.max_loss,
+            "middle_width": candidate.middle_width,
+            "total_stake": candidate.over_stake + candidate.under_stake,
+            "legs_json": [
+                {
+                    "side": "over",
+                    "book": candidate.over_book,
+                    "line": candidate.over_line,
+                    "american_odds": candidate.over_american_odds,
+                    "stake": candidate.over_stake,
+                },
+                {
+                    "side": "under",
+                    "book": candidate.under_book,
+                    "line": candidate.under_line,
+                    "american_odds": candidate.under_american_odds,
+                    "stake": candidate.under_stake,
+                },
+            ],
+            "raw_json": _candidate_row(candidate),
+            "candidate_hash": make_candidate_hash(
+                [
+                    context["scan_id"],
+                    "middle",
+                    candidate.event_id,
+                    candidate.market_key,
+                    candidate.participant,
+                    candidate.over_book,
+                    candidate.over_line,
+                    candidate.over_american_odds,
+                    candidate.under_book,
+                    candidate.under_line,
+                    candidate.under_american_odds,
+                ]
+            ),
+        }
+    )
+    return record
+
+
+def _arbitrage_observation(candidate, context: dict) -> dict:
+    legs = [asdict(leg) for leg in candidate.legs]
+    record = _base_observation(context, "arbitrage")
+    record.update(
+        {
+            "signal": candidate.signal,
+            "event_id": candidate.event_id,
+            "event_label": candidate.event_label,
+            "commence_time": candidate.commence_time,
+            "market_key": candidate.market_key,
+            "group_label": candidate.group_label,
+            "books": " / ".join(leg["bookmaker"] for leg in legs),
+            "odds": " / ".join(f"{leg['american_odds']:+.0f}" for leg in legs),
+            "stakes": " / ".join(f"{leg['stake']:.2f}" for leg in legs),
+            "expected_value": candidate.guaranteed_profit,
+            "implied_probability": candidate.implied_probability,
+            "overround": candidate.overround,
+            "profit_if_hit": candidate.guaranteed_profit,
+            "return_if_hit": candidate.guaranteed_return,
+            "total_stake": candidate.total_stake,
+            "legs_json": legs,
+            "raw_json": {
+                "outcome_count": candidate.outcome_count,
+                "guaranteed_profit": candidate.guaranteed_profit,
+                "guaranteed_return": candidate.guaranteed_return,
+            },
+            "candidate_hash": make_candidate_hash(
+                [
+                    context["scan_id"],
+                    "arbitrage",
+                    candidate.event_id,
+                    candidate.market_key,
+                    candidate.group_key,
+                    legs,
+                ]
+            ),
+        }
+    )
+    return record
+
+
+def _outright_observation(candidate, context: dict) -> dict:
+    legs = [asdict(leg) for leg in candidate.legs]
+    record = _base_observation(context, "outright")
+    record.update(
+        {
+            "signal": candidate.signal,
+            "event_id": candidate.event_id,
+            "event_label": candidate.event_label,
+            "commence_time": candidate.commence_time,
+            "market_key": candidate.market_key,
+            "group_label": candidate.group_label,
+            "books": " / ".join(leg["bookmaker"] for leg in legs),
+            "odds": " / ".join(f"{leg['american_odds']:+.0f}" for leg in legs),
+            "stakes": " / ".join(f"{leg['stake']:.2f}" for leg in legs),
+            "implied_probability": candidate.implied_probability,
+            "profit_if_hit": candidate.profit_if_hit,
+            "return_if_hit": candidate.return_if_hit,
+            "total_stake": candidate.total_stake,
+            "legs_json": legs,
+            "raw_json": {
+                "runner_count": candidate.runner_count,
+                "target_payout": candidate.target_payout,
+                "profit_if_hit": candidate.profit_if_hit,
+                "return_if_hit": candidate.return_if_hit,
+            },
+            "candidate_hash": make_candidate_hash(
+                [
+                    context["scan_id"],
+                    "outright",
+                    candidate.event_id,
+                    candidate.market_key,
+                    candidate.group_key,
+                    legs,
+                ]
+            ),
+        }
+    )
+    return record
+
+
+def _scan_id(
+    *,
+    scan_started_at: str,
+    sport_key: str,
+    market_mode: str,
+    market_keys: list[str],
+) -> str:
+    key = make_candidate_hash([scan_started_at, sport_key, market_mode, market_keys])[:10]
+    return f"{scan_started_at}-{sport_key}-{market_mode}-{key}"
 
 
 def _candidate_dataframe(candidates) -> pd.DataFrame:

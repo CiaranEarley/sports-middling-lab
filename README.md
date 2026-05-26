@@ -51,6 +51,17 @@ The payoff lab turns two sportsbook legs into an options-style payoff diagram.
 It shows middle outcomes, middle probability, expected PnL, expected ROI, max
 loss, leg summary, outcome table, and distribution assumptions.
 
+### Research Log
+
+The research log saves displayed scan candidates into a local SQLite database at
+`local_outputs/sports_middling_research.sqlite3`. It stores market observations,
+signals, pricing fields, legs, review status, notes, and settlement comments.
+It does not store API keys.
+
+This is the first step toward historical research: every deliberate scan can be
+kept for later filtering, CSV export, manual review, and eventual backtesting or
+closing-line value analysis.
+
 ### Model Notes
 
 The notes tab explains the intuition: a middle is a synthetic interval payoff;
@@ -68,8 +79,10 @@ fully backtested trading system.
   but it also limits continuous market monitoring.
 - Closing-line value tracking is limited because CLV needs timestamped entry
   prices and later closing prices from the same market.
-- Saved scan storage, sport-specific models, execution simulation, and automated
-  GitHub Actions checks are natural next upgrades.
+- The local Research Log now stores user-saved scan observations, but a serious
+  backtest still needs a larger sample plus final outcomes.
+- Sport-specific models, execution simulation, and automated GitHub Actions
+  checks are natural next upgrades.
 
 ## Guides
 
@@ -98,6 +111,9 @@ python -m streamlit run app.py
 ```
 
 Never commit `.streamlit/secrets.toml`.
+
+The local research database is also ignored by git. To use a different database
+path, set `SPORTS_MIDDLING_DB_PATH`.
 
 ## API Quota Safety
 
