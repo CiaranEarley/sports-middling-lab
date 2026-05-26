@@ -1878,6 +1878,10 @@ def _render_model_notes(*, expanded: bool = False) -> None:
       odds to under stake times under decimal odds.
     - EV depends on the modeled probability of landing inside the interval and
       the tail loss or gain outside it.
+    - There is no historical odds database yet, so backtesting is limited to
+      saved examples rather than a large timestamped sample.
+    - The API-prompt and credit-capped workflow protects quota, but it limits
+      continuous monitoring and closing-line value analysis.
     - The app is an educational pricing tool and does not account for limits,
       bet acceptance risk, account restrictions, taxes, latency, or execution.
     """

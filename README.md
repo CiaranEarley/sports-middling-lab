@@ -58,6 +58,19 @@ line shopping searches for the best market expression of the same risk; EV
 depends on the probability of landing inside the interval and the losses outside
 it.
 
+## Current Limitations
+
+The app should be viewed as a live research and payoff-analysis tool, not a
+fully backtested trading system.
+
+- There is no historical odds database yet, so backtesting is limited.
+- The API-prompt and credit-capped workflow protects a small The Odds API quota,
+  but it also limits continuous market monitoring.
+- Closing-line value tracking is limited because CLV needs timestamped entry
+  prices and later closing prices from the same market.
+- Saved scan storage, sport-specific models, execution simulation, and automated
+  GitHub Actions checks are natural next upgrades.
+
 ## Guides
 
 - [Getting started](docs/guides/getting-started.md)
