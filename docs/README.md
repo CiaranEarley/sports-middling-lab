@@ -1,7 +1,6 @@
 # Documentation
 
-This folder contains screenshots, setup guides, and documentation for the
-Sports Middling Lab.
+This folder contains screenshots and setup guides for the Sports Middling Lab.
 
 ## Screenshots
 
@@ -17,9 +16,3 @@ Sports Middling Lab.
 - [The Odds API setup](guides/the-odds-api.md)
 - [Interpreting the scanner](guides/interpreting-sports-scanner.md)
 - [Screenshot gallery](guides/screenshot-gallery.md)
-
-## documentation
-
-- [Sports Middling Lab project project guide](study/sports_middling_lab_project_project_guide.pdf)
-- [Sports Middling Lab project project guide](study/sports_middling_lab_project_project_guide.pdf)
-- [Sports betting market scanner project guide](study/sports_betting_market_scanner_project_guide.pdf)

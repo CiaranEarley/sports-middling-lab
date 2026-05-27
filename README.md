@@ -369,7 +369,6 @@ sports_middling/research_log.py SQLite persistence for saved observations
 tests/                          Unit tests for maths, API parsing, and storage
 docs/assets/                    Screenshots
 docs/guides/                    User guides
-docs/guides/                     project project guides
 local_outputs/                  Local ignored database/output files
 ```
 
@@ -417,33 +416,12 @@ Strong next upgrades:
 - Add execution-risk fields such as stake accepted, stake rejected, price moved,
   and one-leg fill.
 
-## project Framing
-
-The strongest way to explain the project:
-
-```text
-Sports Middling Lab is a research workflow for book-vs-book market structure.
-It scans for candidate inefficiencies, explains the payoff shape, protects API
-usage, and saves observations locally so the project can grow toward historical
-testing. It is not a claim of guaranteed profit.
-```
-
-The key distinction:
-
-```text
-The scanner finds structure. The payoff lab explains risk. The research log
-turns one-off scans into a dataset.
-```
-
 ## Additional Guides
 
 - [Getting started](docs/guides/getting-started.md)
 - [The Odds API setup](docs/guides/the-odds-api.md)
 - [Interpreting the scanner](docs/guides/interpreting-sports-scanner.md)
 - [Screenshot gallery](docs/guides/screenshot-gallery.md)
-- [project project guide PDF](docs/guides/sports_middling_lab_project_project_guide.pdf)
-- [project project guide PDF](docs/guides/sports_middling_lab_project_project_guide.pdf)
-- [project project guide PDF](docs/guides/sports_betting_market_scanner_project_guide.pdf)
 
 ## Disclaimer
 
