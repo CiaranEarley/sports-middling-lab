@@ -179,6 +179,10 @@ def main() -> None:
 
 
 def _initialize_state() -> None:
+    public_demo = _public_demo_mode()
+    public_budget = _configured_int("SPORTS_MIDDLING_PUBLIC_BUDGET", 500, 1, 100_000)
+    public_reserve = _configured_int("SPORTS_MIDDLING_PUBLIC_RESERVE", 100, 0, 100_000)
+    public_max_per_click = _public_max_credits_per_click()
     defaults = {
         **PRESETS["NBA player points"],
         "odds_format": "American",
@@ -190,9 +194,9 @@ def _initialize_state() -> None:
         "under_decimal": american_to_decimal(-110),
         "api_calls_armed": False,
         "api_include_all_sports": True,
-        "api_credit_budget": 500,
-        "api_credit_reserve": 50,
-        "api_max_credits_per_click": 5,
+        "api_credit_budget": public_budget if public_demo else 500,
+        "api_credit_reserve": public_reserve if public_demo else 50,
+        "api_max_credits_per_click": public_max_per_click if public_demo else 5,
         "api_auto_trim_scans": True,
         "api_estimated_spent": 0,
         "api_last_used": None,
@@ -1088,6 +1092,16 @@ def _render_outright_controls() -> None:
 
 
 def _render_credit_guard(api_key: str) -> None:
+    public_demo = _public_demo_mode()
+    if public_demo:
+        st.session_state["api_max_credits_per_click"] = _public_max_credits_per_click()
+        st.session_state["api_credit_budget"] = _configured_int(
+            "SPORTS_MIDDLING_PUBLIC_BUDGET", 500, 1, 100_000
+        )
+        st.session_state["api_credit_reserve"] = _configured_int(
+            "SPORTS_MIDDLING_PUBLIC_RESERVE", 100, 0, 100_000
+        )
+
     guard_cols = st.columns([1.0, 0.75, 0.75, 0.75, 0.75, 0.75])
     guard_cols[0].toggle(
         "Arm live API calls",
@@ -1097,11 +1111,12 @@ def _render_credit_guard(api_key: str) -> None:
     guard_cols[1].number_input(
         "Max/click",
         min_value=1,
-        max_value=9,
+        max_value=_public_max_credits_per_click() if public_demo else 9,
         value=int(st.session_state.get("api_max_credits_per_click", 5)),
         step=1,
         key="api_max_credits_per_click",
         help="Hard cap for any single button click. Set to 1-9 while developing.",
+        disabled=public_demo,
     )
     guard_cols[2].toggle(
         "Auto-trim",
@@ -1114,6 +1129,7 @@ def _render_credit_guard(api_key: str) -> None:
         value=int(st.session_state.get("api_credit_budget", 500)),
         step=25,
         key="api_credit_budget",
+        disabled=public_demo,
     )
     guard_cols[4].number_input(
         "Reserve",
@@ -1122,6 +1138,7 @@ def _render_credit_guard(api_key: str) -> None:
         step=10,
         key="api_credit_reserve",
         help="Block new calls if the estimated remaining balance would fall below this.",
+        disabled=public_demo,
     )
     remaining = _estimated_remaining_credits()
     actual_remaining = st.session_state.get("api_last_remaining")
@@ -1134,6 +1151,8 @@ def _render_credit_guard(api_key: str) -> None:
         "Session estimate: "
         f"{_format_credit_value(st.session_state.get('api_estimated_spent', 0))} credit(s) from this app session."
     )
+    if public_demo:
+        st.caption("Public demo limits are locked by deployment secrets.")
     if not api_key:
         st.warning("Add your API key in local Streamlit secrets or the temporary key box before arming calls.")
     elif not st.session_state.get("api_calls_armed", False):
@@ -2565,11 +2584,41 @@ def _api_key_input() -> str:
 
 
 def _configured_api_key() -> str:
+    return _configured_value("THE_ODDS_API_KEY")
+
+
+def _public_demo_mode() -> bool:
+    return _configured_bool("SPORTS_MIDDLING_PUBLIC_DEMO", default=False)
+
+
+def _public_max_credits_per_click() -> int:
+    return _configured_int("SPORTS_MIDDLING_PUBLIC_MAX_CREDITS_PER_CLICK", 3, 1, 9)
+
+
+def _configured_value(name: str, default: str = "") -> str:
     try:
-        secret_value = st.secrets.get("THE_ODDS_API_KEY", "")
+        secret_value = st.secrets.get(name, "")
     except Exception:
         secret_value = ""
-    return str(secret_value or os.getenv("THE_ODDS_API_KEY", ""))
+    return str(secret_value or os.getenv(name, default) or "").strip()
+
+
+def _configured_bool(name: str, *, default: bool) -> bool:
+    value = _configured_value(name)
+    if not value:
+        return default
+    return value.lower() in {"1", "true", "yes", "y", "on"}
+
+
+def _configured_int(name: str, default: int, min_value: int, max_value: int) -> int:
+    value = _configured_value(name)
+    if not value:
+        return default
+    try:
+        parsed = int(value)
+    except ValueError:
+        return default
+    return min(max(parsed, min_value), max_value)
 
 
 def _apply_candidate_to_state(candidate, market_key: str) -> None:

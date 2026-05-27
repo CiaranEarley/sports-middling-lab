@@ -14,5 +14,6 @@ This folder contains screenshots and setup guides for the Sports Middling Lab.
 
 - [Getting started](guides/getting-started.md)
 - [The Odds API setup](guides/the-odds-api.md)
+- [Deployment](guides/deployment.md)
 - [Interpreting the scanner](guides/interpreting-sports-scanner.md)
 - [Screenshot gallery](guides/screenshot-gallery.md)

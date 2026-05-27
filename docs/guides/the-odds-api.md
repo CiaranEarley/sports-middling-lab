@@ -23,11 +23,20 @@ THE_ODDS_API_KEY = "your-key-here"
 
 ## Public Deployment
 
-For a public demo with a small free plan, the safest setup is usually no
-server-side key. Visitors can still use manual mode or enter their own temporary
-key in the app.
+A server-side key gives a smoother public demo because visitors do not need to
+enter their own key. Add the key through hosted Streamlit secrets, never through
+GitHub.
 
-A server-side key gives a smoother demo, but every visitor scan can spend your
-quota. Keep live calls disarmed, keep the per-click cap low, and use a reserve.
+For a public deployment, enable the built-in demo guardrails:
+
+```toml
+THE_ODDS_API_KEY = "your-key-here"
+SPORTS_MIDDLING_PUBLIC_DEMO = true
+SPORTS_MIDDLING_PUBLIC_MAX_CREDITS_PER_CLICK = 3
+SPORTS_MIDDLING_PUBLIC_BUDGET = 500
+SPORTS_MIDDLING_PUBLIC_RESERVE = 100
+```
+
+See [Deployment](deployment.md) for the full publish checklist.
 
 ![Live scan controls](../assets/sports-middling-live-results-wide.png)

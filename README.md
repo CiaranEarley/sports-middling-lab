@@ -81,6 +81,41 @@ Never commit `.streamlit/secrets.toml`. It is ignored by git.
 You can also paste a temporary key into the app while running locally. The app
 does not save that key to the research database.
 
+## Public Streamlit Deployment
+
+The app is ready for Streamlit Community Cloud or a similar hosted Streamlit
+service.
+
+Recommended deployment settings:
+
+```text
+Repository: CiaranEarley/sports-middling-lab
+Branch: main
+Main file path: app.py
+Dependency file: requirements.txt
+```
+
+Add the API key as a hosted secret, not as a committed file:
+
+```toml
+THE_ODDS_API_KEY = "your-key-here"
+SPORTS_MIDDLING_PUBLIC_DEMO = true
+SPORTS_MIDDLING_PUBLIC_MAX_CREDITS_PER_CLICK = 3
+SPORTS_MIDDLING_PUBLIC_BUDGET = 500
+SPORTS_MIDDLING_PUBLIC_RESERVE = 100
+```
+
+With `SPORTS_MIDDLING_PUBLIC_DEMO = true`, visitors can use the server-side key
+without seeing it, but the API credit controls are locked so a visitor cannot
+raise the per-click cap. Live calls are still disarmed by default and only run
+after a button click.
+
+The SQLite Research Log is useful locally. On a public hosted app, treat it as
+demo persistence only; for durable multi-user storage, replace it with a hosted
+database.
+
+Full instructions are in [Deployment](docs/guides/deployment.md).
+
 ## App Layout
 
 The app has four main tabs.
@@ -420,6 +455,7 @@ Strong next upgrades:
 
 - [Getting started](docs/guides/getting-started.md)
 - [The Odds API setup](docs/guides/the-odds-api.md)
+- [Deployment](docs/guides/deployment.md)
 - [Interpreting the scanner](docs/guides/interpreting-sports-scanner.md)
 - [Screenshot gallery](docs/guides/screenshot-gallery.md)
 
