@@ -13,6 +13,8 @@ This project is not betting advice and does not claim guaranteed profit. It is a
 pricing and research workflow for thinking about odds, probability, payoff
 shape, execution risk, and model limitations.
 
+Live app: [sports-middling-lab-ce.streamlit.app](https://sports-middling-lab-ce.streamlit.app/)
+
 ![Sports middling live results](docs/assets/sports-middling-live-results-table-wide.png)
 
 ## What The App Does
